@@ -1,0 +1,6 @@
+This software is in the public domain under the UNLICENSE statement
+For more information, please refer to <http://unlicense.org/>
+
+hopefully ever growing library for my Python utilities
+
+py_openssl_crypto	31.05.2013 frontend module for en-/decryting strings using openssl
