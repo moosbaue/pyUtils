@@ -28,7 +28,7 @@ def doEncrypt(inp, alg='des3', passFile="~/.ssh/id_dsa",line=2):
 def doDecrypt(inp, alg='des3', passFile="~/.ssh/id_dsa",line=2):
     return _doCryptOps(inp, alg, passFile, dec=1)
 
-def _doCryptOps(inp, alg, passFile, line, dec=0):
+def _doCryptOps(inp, alg, passFile, line=2, dec=0):
     if dec == 0:
         args =['openssl', 'enc', '-'+alg, '-pass', 'pass:`sed -n '+str(line)+','+str(line)+'p '+passFile+'`', '-a']
     else:
