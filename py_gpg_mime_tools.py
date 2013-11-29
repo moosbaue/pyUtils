@@ -124,7 +124,7 @@ if __name__ == '__main__':
     import sys
     args=parse_args()
     output = (clarify(args['file'].read()))
-    if args.mheader.:
+    if args.mheader:
         print 'Header'
     if args.verify:
         verify(output)
