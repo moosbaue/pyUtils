@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+# used as a base by Josef Moosbauer for py_gpg_mime tools
 # With minor changes by Nathan Grigg
 #
 # Original Copyright 2008 Lenny Domnitser <http://domnit.org/>
@@ -65,17 +66,8 @@ def clarify(messagetext):
     #message = email.message_from_string(messagetext)
         
     if messagetext.find('-----BEGIN PGP MESSAGE-----')>0:
-        #Pipe to gpg for verification and exit'''
-        import subprocess
-        try:
-            process = subprocess.Popen(['/usr/bin/env', 'gpg','-d','--batch','--textmode'],stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            messagetext = (process.communicate(messagetext))[0]
-            #process.wait()
-        except:
-            sys.exit('', process.returncode+sys.exc_info()[0])
-        process.stdin.close()
-        process.stdout.close()
-            
+        messagetext = decrypt(messagetext)    
+    
     message = email.message_from_string(messagetext)
                 
     _clarify(message, messagetext)
@@ -90,7 +82,20 @@ def verify(text):
     # preserve the gpg error code
     sys.exit(process.returncode)
 
-
+def deccrypt(text):
+    '''Pipe to gpg for decryption and exit'''
+    import subprocess
+    import string
+    try:
+        process = subprocess.Popen(['/usr/bin/env', 'gpg','-d','--batch','--textmode'],stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        messagetext = (process.communicate(messagetext))[0]
+        #process.wait()
+    except:
+        sys.exit('', process.returncode+sys.exc_info()[0])
+    process.stdin.close()
+    process.stdout.close()
+    return messagetext.as_string()
+        
 def parse_args():
     try:
         import argparse
@@ -107,7 +112,10 @@ Example: clearsign.py < foo.txt""")
         description='Convert a PGP/MIME signed email to a clearsigned message.  If no file is given, input is read from stdin.')
     parser.add_argument('file',metavar='file',type=argparse.FileType('r'),
         nargs="?",default=sys.stdin,help='a file containing the whole MIME email')
-    parser.add_argument('-v','--verify',help="pass output to gpg to verify signature",
+    group=parser.add_argument_group()
+    group.add_argument('-v','--verify', nargs='*', help="pass output to gpg to verify signature",
+        action='store_true')
+    group.add_argument('-m','--mheader', nargs='*', help="pass mailheader along",
         action='store_true')
     return vars(parser.parse_args())
  
@@ -116,7 +124,9 @@ if __name__ == '__main__':
     import sys
     args=parse_args()
     output = (clarify(args['file'].read()))
-    if args['verify']:
+    if args.mheader.:
+        print 'Header'
+    if args.verify:
         verify(output)
     else:
         sys.stdout.write(output)
