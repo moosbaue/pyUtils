@@ -31,7 +31,63 @@ NotDashEscaped: You need GnuPG to verify this message
 
 %(text)s%(sig)s'''
 
+def strip_control_m(input):  
+      
+    if input:  
+              
+        import re  
+        # ascii control characters  
+        input = re.sub(r"[\x0D]", "", input)  
+              
+    return input  
 
+def _do_decrypt(message, messagetext):
+    '''Pipe to gpg for decryption and exit'''
+    if message.get_content_type() == 'multipart/encrypted':
+        if message.get_param('protocol') == 'application/pgp-encrypted':
+            # normalize line endings to \n for processing
+            messagetext=messagetext.replace('\r\n', '\n').replace('\r', '\n')
+            import subprocess
+            import string
+            try:
+                process = subprocess.Popen(['/usr/bin/env', 'gpg','-d','--batch'],stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                out, err = process.communicate(messagetext)
+                process.wait()
+            except:
+                sys.exit(process.returncode)
+            process.stdin.close()
+            process.stdout.close()
+            out=strip_control_m(out)
+            
+            tmpp = out.splitlines()[0]+out.splitlines()[1]
+            newct = tmpp[14:-1]
+            out1 = out[127:-1]
+            message.replace_header('Content-Type', newct)
+            message.set_boundary(message.get_boundary()[1:])
+            #text = out.split('\n--"%s--\n' % message.get_boundary(), 2)
+            text = out.split('\n--%s\n' % message.get_boundary())
+            
+            j=0
+            for part in message.walk():
+                if part.is_multipart():
+                    j+=1
+                    continue
+                if j==1:
+                    part.replace_header('Content-Type', 'text/plain; charset="ISO-8859-1"')
+                    #part.set_charset('ISO-8859-1')
+                    part.replace_header('Content-Transfer-Encoding', 'quoted-printable')
+                if j==2:
+                    part.replace_header('Content-Type', 'application/pgp-signature')
+                    part.replace_header('Content-Description','This is a digitally signed message part')
+                    part.replace_header('Content-Transfer-Encoding', '7bit')
+                part.set_payload(''.join(text[j].splitlines(True)[3:]))
+                j+=1
+                                      
+        elif message.is_multipart():
+            for message in message.get_payload():
+                _do_decrypt(message, messagetext)
+          
+    
 def _clarify(message, messagetext):
     if message.get_content_type() == 'multipart/signed':
         if message.get_param('protocol') == 'application/pgp-signature':
@@ -41,15 +97,11 @@ def _clarify(message, messagetext):
             assert hashname.startswith('PGP-')
             hashname = hashname.replace('PGP-', '', 1)
             textmess, sigmess = message.get_payload()
-            assert sigmess.get_content_type() == 'application/pgp-signature'
-            #text = textmess.as_string() - not byte-for-byte accurate
             text = messagetext.split('\n--%s\n' % message.get_boundary(), 2)[1]
             sig = sigmess.get_payload()
             assert isinstance(sig, str)
-            # Setting content-type to application/octet instead of text/plain
-            # to maintain CRLF endings. Using replace_header instead of
-            # set_type because replace_header clears parameters.
             message.replace_header('Content-Type', 'application/octet')
+            
             clearsign = TEMPLATE % locals()
             clearsign = clearsign.replace(
                 '\r\n', '\n').replace('\r', '\n').replace('\n', '\r\n')
@@ -63,39 +115,30 @@ def clarify(messagetext):
     import string
     '''given a string containing a MIME message, returns a string
     where PGP/MIME messages are replaced with clearsigned messages.'''
-    #message = email.message_from_string(messagetext)
-        
-    if messagetext.find('-----BEGIN PGP MESSAGE-----')>0:
-        messagetext = decrypt(messagetext)    
     
     message = email.message_from_string(messagetext)
+    if messagetext.find('-----BEGIN PGP MESSAGE-----')>0:
+        _do_decrypt(message, messagetext)
+        messagetext = message.as_string() 
                 
-    _clarify(message, messagetext)
+    if messagetext.find('application/pgp-signature'):            
+        _clarify(message, messagetext)
+    
     return message.as_string()
 
 def verify(text):
     '''Pipe to gpg for verification and exit'''
     import subprocess
-    process=subprocess.Popen(['/usr/bin/env', 'gpg','--verify','--batch'],stdin=subprocess.PIPE)
-    process.communicate(text)
-    process.wait()
-    # preserve the gpg error code
-    sys.exit(process.returncode)
-
-def deccrypt(text):
-    '''Pipe to gpg for decryption and exit'''
-    import subprocess
-    import string
     try:
-        process = subprocess.Popen(['/usr/bin/env', 'gpg','-d','--batch','--textmode'],stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        messagetext = (process.communicate(messagetext))[0]
-        #process.wait()
+        process=subprocess.Popen(['/usr/bin/env', 'gpg','-q','--verify','--batch'],stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        err, out = process.communicate(text)
     except:
-        sys.exit('', process.returncode+sys.exc_info()[0])
+        sys.exit('', process.returncode)
     process.stdin.close()
-    process.stdout.close()
-    return messagetext.as_string()
-        
+    process.stdout.close()    
+    
+    return out
+    
 def parse_args():
     try:
         import argparse
@@ -112,10 +155,9 @@ Example: clearsign.py < foo.txt""")
         description='Convert a PGP/MIME signed email to a clearsigned message.  If no file is given, input is read from stdin.')
     parser.add_argument('file',metavar='file',type=argparse.FileType('r'),
         nargs="?",default=sys.stdin,help='a file containing the whole MIME email')
-    group=parser.add_argument_group()
-    group.add_argument('-v','--verify', nargs='*', help="pass output to gpg to verify signature",
+    parser.add_argument('-v','--verify', help="pass output to gpg to verify signature",
         action='store_true')
-    group.add_argument('-m','--mheader', nargs='*', help="pass mailheader along",
+    parser.add_argument('-m','--mheader',help="pass mailheader along",
         action='store_true')
     return vars(parser.parse_args())
  
@@ -123,11 +165,14 @@ Example: clearsign.py < foo.txt""")
 if __name__ == '__main__':
     import sys
     args=parse_args()
-    output = (clarify(args['file'].read()))
-    if args.mheader:
-        print 'Header'
-    if args.verify:
-        verify(output)
-    else:
-        sys.stdout.write(output)
+    origmail=args['file'].read()
+    output = clarify(origmail)
+    if args['mheader']:
+        print test
+    if args['verify']:
+        mail = output
+        #print mail
+        output = (verify(output))
+        output = mail+output
+    sys.stdout.write(output)
 
