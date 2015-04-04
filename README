@@ -5,5 +5,5 @@ hopefully ever growing library for my Python utilities
 
 py_openssl_crypto	31.05.2013 frontend module for en-/decryting strings using openssl
 
-py_gpg_mime_tools	27.11.2013 a set of python tools for gpg (and propably pgp) mime en/decryption
+py_gpg_mime_tools	27.11.2013 a set of python tools for gpg (and probably pgp) mime en/decryption
 					30.11.2013 decrypt and check sig works
